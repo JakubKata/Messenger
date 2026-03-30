@@ -67,5 +67,5 @@ def get_all_clients():
     conn.close()
     all_clients_text = ""
     for r in result:
-        all_clients_text += f"{r[0]}, {r[1]} | "
+        all_clients_text += f"{r[0]}, {r[1]} |"
     return all_clients_text
