@@ -4,7 +4,7 @@ import threading
 import json
 import os
 from database import init_db, get_client, new_client, offline_message_save, offline_message_read, is_existing_client, get_all_clients, update_public_key, get_public_key
-from protocol import CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY
+from protocol import CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY, CMD_KEY
 from dotenv import load_dotenv
 
 #.env
@@ -77,7 +77,7 @@ def do_clients(client_socket, parts):
 def do_public_key(client_socket, client_id, parts):
     public_key = parts[1]
     update_public_key(client_id, public_key)
-    client_socket.send(f"{CMD_ACK}\n".encode())
+    client_socket.send(f"{CMD_ACK}|{CMD_KEY}\n".encode())
 
 def do_get_key(client_socket, parts):
     target_id = parts[1]

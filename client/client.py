@@ -4,7 +4,7 @@ import rsa
 import threading
 import os
 from dotenv import load_dotenv
-from protocol import CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY
+from protocol import CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY, CMD_KEY
 from dotenv import load_dotenv
 
 #.env
@@ -59,6 +59,8 @@ def receive_messages(client_socket, private_key):
                     print("The destination client is offline. The message will be saved and delivered when the client comes online.")
                 elif parts[1] == CMD_NACK:
                     print("Failed to send the message. The destination client is not existing.")
+                elif parts[1] == CMD_KEY:
+                    print("The key is in the database")
 
             elif command == CMD_MSG:
                 sender_id = parts[1]
