@@ -115,40 +115,52 @@ def handle_client(client_socket, client_address):
         client_socket.send(offline_data.encode())
 
     while True:
-        data = client_socket.recv(8192).decode()
-        if not data:
-            break
+        try:
+            data = client_socket.recv(8192).decode()
+            if not data:
+                break
 
-        messages = data.split("\n")
-        for response in messages:
-            if not response.strip(): 
-                continue
+            messages = data.split("\n")
+            for response in messages:
+                if not response.strip(): 
+                    continue
 
-            parts = response.split("|")
-            command = parts[0]
-            if command == CMD_CLIENTS:
-                do_clients(client_socket, parts)
-                continue
-            
-            if command == CMD_PUBKEY:
-                do_public_key(client_socket, client_id, parts)
-                continue
+                parts = response.split("|")
+                command = parts[0]
+                if command == CMD_CLIENTS:
+                    do_clients(client_socket, parts)
+                    continue
+                
+                if command == CMD_PUBKEY:
+                    do_public_key(client_socket, client_id, parts)
+                    continue
 
-            if command == CMD_GETKEY:
-                do_get_key(client_socket, parts)
-                continue
+                if command == CMD_GETKEY:
+                    do_get_key(client_socket, parts)
+                    continue
 
-            if command == CMD_MSG:
-                do_message(client_socket, client_id, parts)
-                continue
-                        
+                if command == CMD_MSG:
+                    do_message(client_socket, client_id, parts)
+                    continue
+        except ConnectionResetError:
+            print(f"Error handling client Connection reset: {client_id}")
+            break   
+        except Exception as e:
+            print(f"Error handling client {client_id}: {e}")
+            break   
+
     active_clients.pop(client_id, None)
     client_socket.close()
 
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind((ip, port))
+    try:
+        server_socket.bind((ip, port))
+    except OSError as e:
+        print(f"Bind error: {e}")
+        exit(1)
+        
     server_socket.listen()
 
     print(f"server is listening to {ip}:{port}...")

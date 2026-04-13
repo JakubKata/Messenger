@@ -131,10 +131,16 @@ def authenticate(client_socket):
             
 while True:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-
-        secure_socket = context.wrap_socket(client_socket, server_hostname=ip)
-        secure_socket.connect((ip, port))
-
+        try:
+            secure_socket = context.wrap_socket(client_socket, server_hostname=ip)
+            secure_socket.connect((ip, port))
+        except ConnectionRefusedError as e:
+            print(f"Connection error: {e}")
+            break
+        except socket.gaierror as e:
+            print(f"Address error: {e}")
+            break
+        
         client_id = authenticate(secure_socket) 
 
         if client_id:
