@@ -95,3 +95,14 @@ def get_all_clients():
     for r in result:
         all_clients_text += f"{r[0]}, {r[1]} |"
     return all_clients_text
+
+def get_ready_clients():
+    conn = sqlite3.connect("clients.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT client_id, name FROM users WHERE public_key IS NOT NULL AND password IS NOT NULL AND name IS NOT NULL")
+    result = cursor.fetchall()
+    conn.close()
+    ready_clients_text = ""
+    for r in result:
+        ready_clients_text += f"{r[0]}, {r[1]} |"
+    return ready_clients_text

@@ -3,7 +3,7 @@ import ssl
 import threading
 import json
 import os
-from database import init_db, get_client, new_client, offline_message_save, offline_message_read, is_existing_client, get_all_clients, update_public_key, get_public_key
+from database import init_db, get_client, new_client, offline_message_save, offline_message_read, is_existing_client,get_ready_clients, get_all_clients, update_public_key, get_public_key
 from protocol import CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_EXISTING, CMD_BUSY, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY, CMD_KEY
 from dotenv import load_dotenv
 
@@ -92,7 +92,7 @@ def do_clients(client_socket, parts):
         clients_text = get_active_clients()
         client_socket.send(f"{clients_text}\n".encode())
     elif parts[1] == CMD_ALL:
-        clients_text = get_all_clients()
+        clients_text = get_ready_clients()
         client_socket.send(f"{clients_text}\n".encode())
 
 def do_public_key(client_socket, client_id, parts):
