@@ -4,7 +4,8 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QListWidgetItem, QMessa
 from PySide6.QtCore import Qt, QTimer
 from ui_chat import Ui_MainWindow
 
-from client import ChatClient
+from network import NetworkClient
+from chat_store import ChatStore
 from protocol import CMD_ALL, CMD_ACTIVE
 
 class ChatApp(QMainWindow):
@@ -14,10 +15,11 @@ class ChatApp(QMainWindow):
         self.ui.setupUi(self)
         self.setWindowTitle("Secure E2EE Chat")
 
-        self.users_data = {}
-        self.chat_history = {}
+        self.store = ChatStore()
+        self.users_data = self.store.users
+        self.chat_history = self.store.history
 
-        self.client_thread = ChatClient()
+        self.client_thread = NetworkClient()
         self.client_thread.signal_login_ok.connect(self.on_login_success)
         self.client_thread.signal_login_fail.connect(self.on_login_fail)
         self.client_thread.signal_new_msg.connect(self.on_new_message)
@@ -113,18 +115,13 @@ class ChatApp(QMainWindow):
                         continue
 
                     if cid not in self.users_data:
-                        self.users_data[cid] = {
-                            "name": name,
-                            "is_online": False,
-                            "has_unread": False,
-                            "last_active": time.time() - 1000,
-                        }
+                        self.store.update_user_status(cid, False, name=name, has_unread=False, last_active=time.time() - 1000)
                     else:
-                        self.users_data[cid]["name"] = name
+                        self.store.update_user_status(cid, self.users_data[cid]["is_online"], name=name)
 
         elif cmd_type == CMD_ACTIVE:
             for cid in self.users_data:
-                self.users_data[cid]["is_online"] = False
+                self.store.update_user_status(cid, False)
 
             for part in parts:
                 if "," in part:
@@ -136,20 +133,14 @@ class ChatApp(QMainWindow):
                         continue
 
                     if cid not in self.users_data:
-                        self.users_data[cid] = {
-                            "name": name,
-                            "is_online": True,
-                            "has_unread": False,
-                            "last_active": time.time() - 1000,
-                        }
+                        self.store.update_user_status(cid, True, name=name, has_unread=False, last_active=time.time() - 1000)
                     else:
-                        self.users_data[cid]["is_online"] = True
-                        self.users_data[cid]["name"] = name
+                        self.store.update_user_status(cid, True, name=name)
                     
         self.refresh_clients_list()
 
     def on_new_message(self, sender_id, sender_name, msg):
-        self.chat_history.setdefault(sender_id, []).append(("in", sender_name, msg))
+        self.store.add_message(sender_id, "in", sender_name, msg)
 
         current_item = self.ui.listWidget_clients_list.currentItem()
         current_chat_id = current_item.data(Qt.UserRole) if current_item else None
@@ -158,11 +149,10 @@ class ChatApp(QMainWindow):
             self.ui.textEdit_chat.append(f"[{sender_name}]: {msg}")
         else:
             if sender_id in self.users_data:
-                self.users_data[sender_id]["has_unread"] = True
-                self.users_data[sender_id]["last_active"] = time.time()
+                self.store.update_user_status(sender_id, self.users_data[sender_id]["is_online"], has_unread=True, last_active=time.time())
                 self.refresh_clients_list()
             else:
-                self.users_data[sender_id] = {"name": sender_name, "is_online": True, "has_unread": True, "last_active": time.time()}
+                self.store.update_user_status(sender_id, True, name=sender_name, has_unread=True, last_active=time.time())
                 self.refresh_clients_list()
 
     def on_system_message(self, msg):
@@ -184,7 +174,7 @@ class ChatApp(QMainWindow):
             
         target_id = current_item.data(Qt.UserRole)
 
-        self.chat_history.setdefault(target_id, []).append(("out", "Ja", msg))
+        self.store.add_message(target_id, "out", "Ja", msg)
         
         self.ui.textEdit_chat.append(f"<font color='blue'>[Ja]: {msg}</font>")
         self.ui.lineEdit_input.clear()
@@ -225,14 +215,13 @@ class ChatApp(QMainWindow):
         self.ui.label_current_user.setText(f"User : {name} ({client_id})")
         self.ui.textEdit_chat.clear()
 
-        for direction, author, text in self.chat_history.get(client_id, []):
+        for direction, author, text in self.store.get_messages(client_id):
             if direction == "out":
                 self.ui.textEdit_chat.append(f"<font color='blue'>[{author}]: {text}</font>")
             else:
                 self.ui.textEdit_chat.append(f"[{author}]: {text}")
 
-        self.users_data[client_id]["has_unread"] = False
-        self.users_data[client_id]["last_active"] = time.time()
+        self.store.update_user_status(client_id, self.users_data[client_id]["is_online"], has_unread=False, last_active=time.time())
         self.refresh_clients_list()
 
         # Prefetch recipient public key right after selecting chat partner.

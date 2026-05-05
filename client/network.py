@@ -1,43 +1,44 @@
+import os
 import socket
 import ssl
-import rsa
-import os
-from dotenv import load_dotenv
 
+import rsa
+from dotenv import load_dotenv
 from PySide6.QtCore import QThread, Signal
+
+from crypto_manager import CryptoManager
+from protocol import Packet
 from protocol import CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_EXISTING, CMD_BUSY, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY, CMD_KEY
 
-class ChatClient(QThread):
-    # signals for GUI communication
-    signal_login_ok = Signal(str)           # client ID after successful login
-    signal_login_fail = Signal(str)         # error message after failed login
-    signal_new_msg = Signal(str, str, str)  # sender_id, sender_name, message
-    signal_clients_list = Signal(str, str)  # cmd_type, clients list
-    signal_system_msg = Signal(str)         # system message (e.g., message sent successfully)
+
+class NetworkClient(QThread):
+    signal_login_ok = Signal(str)
+    signal_login_fail = Signal(str)
+    signal_new_msg = Signal(str, str, str)
+    signal_clients_list = Signal(str, str)
+    signal_system_msg = Signal(str)
 
     def __init__(self):
         super().__init__()
 
-        # .env
         load_dotenv()
         self.ip = os.getenv("SERVER_IP")
         self.port = int(os.getenv("SERVER_PORT"))
         self.key = os.getenv("SECRET_KEY")
 
-        # tls
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self.context.load_verify_locations("server.crt")
-        self.context.check_hostname = False 
+        self.context.check_hostname = False
 
         self.socket = None
         self.client_id = None
+        self.crypto_manager = None
         self.private_key = None
         self.public_key = None
         self.cached_public_key = {}
         self.pending_public_keys = set()
         self._recv_buffer = ""
         self._intentional_disconnect = False
-
         self.is_running = True
 
     def close_connection(self):
@@ -71,25 +72,6 @@ class ChatClient(QThread):
         line, self._recv_buffer = self._recv_buffer.split("\n", 1)
         return line.strip()
 
-    # rsa
-    def get_or_generate_keys(self, client_id):
-        private_file = f"private_{client_id}.pem"
-        public_file = f"public_{client_id}.pem"
-
-        if os.path.exists(private_file):
-            with open(private_file, "rb") as f:
-                private_key = rsa.PrivateKey.load_pkcs1(f.read())
-            with open(public_file, "rb") as f:
-                public_key = rsa.PublicKey.load_pkcs1(f.read())
-        else:
-            public_key, private_key = rsa.newkeys(1024)
-            with open(private_file, "wb") as f:
-                f.write(private_key.save_pkcs1())
-            with open(public_file, "wb") as f:
-                f.write(public_key.save_pkcs1())
-        return public_key, private_key
-
-    # handler functions
     def connect_to_server(self):
         try:
             self.is_running = True
@@ -124,7 +106,7 @@ class ChatClient(QThread):
 
         self.socket.sendall(f"{self.key}\n".encode())
         authentication_response = self._recv_line()
-        
+
         if authentication_response == CMD_NACK:
             self.signal_login_fail.emit("Invalid server key.")
             return False
@@ -140,13 +122,15 @@ class ChatClient(QThread):
 
             if response.startswith(f"{CMD_ACK}|") or response == CMD_ACK:
                 self.client_id = client_id
-                self.public_key, self.private_key = self.get_or_generate_keys(client_id)
+                self.crypto_manager = CryptoManager(client_id)
+                self.private_key = self.crypto_manager.private_key
+                self.public_key = self.crypto_manager.public_key
                 public_key_str = self.public_key.save_pkcs1().decode().replace("\n", "~")
                 self.socket.sendall(f"{CMD_PUBKEY}|{public_key_str}\n".encode())
-                
+
                 self.signal_login_ok.emit(client_id)
                 if not self.isRunning():
-                    self.start() # start receive_messages in the background
+                    self.start()
                 return True
 
             if response == CMD_NACK:
@@ -163,7 +147,7 @@ class ChatClient(QThread):
 
         self.socket.sendall(f"{self.key}\n".encode())
         authentication_response = self._recv_line()
-        
+
         if authentication_response == CMD_NACK:
             self.signal_login_fail.emit("Invalid server key.")
             return False
@@ -176,7 +160,7 @@ class ChatClient(QThread):
             if response is None:
                 self.signal_login_fail.emit("Connection closed during registration.")
                 return False
-            
+
             if response == CMD_BUSY:
                 self.signal_login_fail.emit("Client ID is already in use. Please choose a different one.")
                 return False
@@ -186,13 +170,15 @@ class ChatClient(QThread):
                 register_response = self._recv_line()
                 if register_response == CMD_ACK:
                     self.client_id = client_id
-                    self.public_key, self.private_key = self.get_or_generate_keys(client_id)
+                    self.crypto_manager = CryptoManager(client_id)
+                    self.private_key = self.crypto_manager.private_key
+                    self.public_key = self.crypto_manager.public_key
                     public_key_str = self.public_key.save_pkcs1().decode().replace("\n", "~")
                     self.socket.sendall(f"{CMD_PUBKEY}|{public_key_str}\n".encode())
-                    
+
                     self.signal_login_ok.emit(client_id)
                     if not self.isRunning():
-                        self.start() # start receive_messages in the background
+                        self.start()
                     return True
 
         self.signal_login_fail.emit("Authentication failed.")
@@ -201,7 +187,7 @@ class ChatClient(QThread):
     def request_clients(self, cmd_type):
         if self.socket:
             try:
-                self.socket.sendall(f"{CMD_CLIENTS}|{cmd_type}\n".encode())
+                self.socket.sendall(Packet(CMD_CLIENTS, cmd_type).encode())
             except OSError as e:
                 self.signal_system_msg.emit(f"Connection error: {e}")
 
@@ -211,7 +197,7 @@ class ChatClient(QThread):
         if target_id in self.cached_public_key or target_id in self.pending_public_keys:
             return True
         try:
-            self.socket.sendall(f"{CMD_GETKEY}|{target_id}\n".encode())
+            self.socket.sendall(Packet(CMD_GETKEY, target_id).encode())
             self.pending_public_keys.add(target_id)
             if notify:
                 self.signal_system_msg.emit(f"Fetching key for {target_id}... Please wait a moment and send again.")
@@ -231,8 +217,8 @@ class ChatClient(QThread):
 
         public_key = self.cached_public_key[destination_id]
         try:
-            encrypted_msg = rsa.encrypt(message.encode(), public_key).hex()
-            self.socket.sendall(f"{CMD_MSG}|{destination_id}|{encrypted_msg}\n".encode())
+            encrypted_msg = self.crypto_manager.encrypt(message, public_key)
+            self.socket.sendall(Packet(CMD_MSG, destination_id, encrypted_msg).encode())
         except Exception as e:
             self.signal_system_msg.emit(f"Encryption error: {e}")
 
@@ -255,9 +241,10 @@ class ChatClient(QThread):
             for message in messages:
                 if not message.strip():
                     continue
-                parts = message.split("|")
-                command = parts[0]
-                
+                packet = Packet.decode(message)
+                command = packet.command
+                parts = [packet.command, *packet.args]
+
                 if command == CMD_ACK:
                     if len(parts) < 2:
                         self.signal_system_msg.emit("Server response was malformed.")
@@ -279,8 +266,7 @@ class ChatClient(QThread):
                     sender_name = parts[2]
                     encrypted_hex = "|".join(parts[3:])
                     try:
-                        encrypted_bytes = bytes.fromhex(encrypted_hex)
-                        decrypted_msg = rsa.decrypt(encrypted_bytes, self.private_key).decode()
+                        decrypted_msg = self.crypto_manager.decrypt(encrypted_hex)
                         self.signal_new_msg.emit(sender_id, sender_name, decrypted_msg)
                     except Exception:
                         self.signal_system_msg.emit("invalid private key")
@@ -296,11 +282,10 @@ class ChatClient(QThread):
                     self.signal_system_msg.emit(f"Received public key for client: {target_id}")
 
                 elif command in [CMD_ALL, CMD_ACTIVE]:
-                    # server sends: CMD_ACTIVE | id, name | id, name |
                     clients_text = "|".join(parts[1:])
                     self.signal_clients_list.emit(command, clients_text)
 
-                else:    
+                else:
                     self.signal_system_msg.emit(message)
 
         self.socket = None
