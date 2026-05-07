@@ -224,7 +224,6 @@ class ChatApp(QMainWindow):
         self.store.update_user_status(client_id, self.users_data[client_id]["is_online"], has_unread=False, last_active=time.time())
         self.refresh_clients_list()
 
-        # Prefetch recipient public key right after selecting chat partner.
         self.client_thread.request_public_key(client_id)
 
 if __name__ == "__main__":

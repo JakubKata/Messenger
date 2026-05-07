@@ -1,3 +1,5 @@
+# chat_store.py
+
 class ChatStore:
     def __init__(self):
         self.users = {}

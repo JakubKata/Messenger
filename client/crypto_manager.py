@@ -1,7 +1,5 @@
 import os
-
 import rsa
-
 
 class CryptoManager:
     def __init__(self, client_id):

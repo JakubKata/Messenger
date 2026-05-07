@@ -3,6 +3,7 @@ import ssl
 import threading
 import json
 import os
+
 from database import Database
 from protocol import Packet, CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_EXISTING, CMD_BUSY, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY, CMD_KEY
 from dotenv import load_dotenv
@@ -33,104 +34,113 @@ class ChatServer:
     def authenticate_key(self, client_socket, client_address):
         client_key = client_socket.recv(1024).decode().strip()
         if client_key != self.key:
-            client_socket.sendall(f"{CMD_NACK}\n".encode())
+            client_socket.sendall(Packet(CMD_NACK).encode())
             return False
         else:
-            client_socket.sendall(f"{CMD_ACK}\n".encode())
+            client_socket.sendall(Packet(CMD_ACK).encode())
             return True
 
     def authenticate(self, client_socket, client_address):
         while True:
-            mode = client_socket.recv(1024).decode().strip()
-            if mode == CMD_NEW:
-                client_id = client_socket.recv(1024).decode().strip()
-                if not client_id:
-                    client_socket.sendall(f"{CMD_NACK}\n".encode())
+            raw_mode = client_socket.recv(1024).decode().strip()
+            if not raw_mode:
+                client_socket.sendall(Packet(CMD_NACK).encode())
+                return False
+
+            mode_packet = Packet.decode(raw_mode)
+
+            if mode_packet.command == CMD_NEW:
+                if len(mode_packet.args) < 1:
+                    client_socket.sendall(Packet(CMD_NACK).encode())
                     return False
 
+                client_id = mode_packet.args[0]
+
                 if self.database.is_existing_client(client_id):
-                    client_socket.sendall(f"{CMD_BUSY}\n".encode())
+                    client_socket.sendall(Packet(CMD_BUSY).encode())
                     continue
                 else:
-                    client_socket.sendall(f"{CMD_ACK}\n".encode())
+                    client_socket.sendall(Packet(CMD_ACK).encode())
                     response = client_socket.recv(1024).decode().strip()
-                    if not response or "|" not in response:
+                    if not response:
                         return False
-                    name, password = response.split("|", 1)
+                    response_packet = Packet.decode(response)
+                    if response_packet.command != CMD_NEW or len(response_packet.args) < 2:
+                        return False
+                    name, password = response_packet.args[0], response_packet.args[1]
                     self.database.new_client(client_id, name, password)
                     self.active_clients[client_id] = [client_socket, client_address, name, password]  # active_client = {client_id : [client_socket, client_address, name, password]}
-                    client_socket.sendall(f"{CMD_ACK}\n".encode())
+                    client_socket.sendall(Packet(CMD_ACK).encode())
                     return client_id
 
-            elif mode == CMD_EXISTING:
-                response = client_socket.recv(1024).decode().strip()
-                if not response or "|" not in response:
-                    client_socket.sendall(f"{CMD_NACK}\n".encode())
+            elif mode_packet.command == CMD_EXISTING:
+                if len(mode_packet.args) < 2:
+                    client_socket.sendall(Packet(CMD_NACK).encode())
                     continue
 
-                client_id, client_password = response.split("|", 1)
+                client_id, client_password = mode_packet.args[0], mode_packet.args[1]
                 if not self.database.is_existing_client(client_id):
-                    client_socket.sendall(f"{CMD_NACK}\n".encode())
+                    client_socket.sendall(Packet(CMD_NACK).encode())
                     continue
 
                 client = self.database.get_client(client_id)
                 password = client[1]
                 if password != client_password:
-                    client_socket.sendall(f"{CMD_NACK}\n".encode())
+                    client_socket.sendall(Packet(CMD_NACK).encode())
                     continue
 
                 self.active_clients[client_id] = [client_socket, client_address, *client]  # active_client = {client_id : [client_socket, client_address, name, password]}
                 name = self.active_clients[client_id][2]
-                client_socket.sendall(f"{CMD_ACK}|{name}\n".encode())
+                client_socket.sendall(Packet(CMD_ACK, name).encode())
                 return client_id
             else:
-                client_socket.sendall(f"{CMD_NACK}\n".encode())
+                client_socket.sendall(Packet(CMD_NACK).encode())
                 return False
 
     def do_clients(self, client_socket, parts):
         if parts[1] == CMD_ACTIVE:
             clients_text = self.get_active_clients()
-            client_socket.sendall(f"{CMD_ACTIVE}|{clients_text}\n".encode())
+            client_socket.sendall(Packet(CMD_ACTIVE, clients_text).encode())
         elif parts[1] == CMD_ALL:
             clients_text = self.database.get_ready_clients()
-            client_socket.sendall(f"{CMD_ALL}|{clients_text}\n".encode())
+            client_socket.sendall(Packet(CMD_ALL, clients_text).encode())
 
     def do_public_key(self, client_socket, client_id, parts):
         if len(parts) < 2:
-            client_socket.sendall(f"{CMD_ACK}|{CMD_NACK}\n".encode())
+            client_socket.sendall(Packet(CMD_ACK, CMD_NACK).encode())
             return
         public_key = parts[1]
         self.database.update_public_key(client_id, public_key)
-        client_socket.sendall(f"{CMD_ACK}|{CMD_KEY}\n".encode())
+        client_socket.sendall(Packet(CMD_ACK, CMD_KEY).encode())
 
     def do_get_key(self, client_socket, parts):
         if len(parts) < 2:
-            client_socket.sendall(f"{CMD_ACK}|{CMD_NACK}\n".encode())
+            client_socket.sendall(Packet(CMD_ACK, CMD_NACK).encode())
             return
         target_id = parts[1]
         public_key = self.database.get_public_key(target_id)
         if public_key != None:
-            client_socket.sendall(f"{CMD_PUBKEY}|{target_id}|{public_key}\n".encode())
+            client_socket.sendall(Packet(CMD_PUBKEY, target_id, public_key).encode())
         else:
-            client_socket.sendall(f"{CMD_ACK}|{CMD_NACK}\n".encode())
+            client_socket.sendall(Packet(CMD_ACK, CMD_NACK).encode())
 
     def do_message(self, client_socket, client_id, parts):
         if len(parts) < 3:
-            client_socket.sendall(f"{CMD_ACK}|{CMD_NACK}\n".encode())
+            client_socket.sendall(Packet(CMD_ACK, CMD_NACK).encode())
             return
         destination_id = parts[1]
         message = "|".join(parts[2:])
         sender_name = self.active_clients[client_id][2]
         if destination_id in self.active_clients:
-            self.active_clients[destination_id][0].sendall(f"{CMD_MSG}|{client_id}|{sender_name}|{message}\n".encode())
-            client_socket.sendall(f"{CMD_ACK}|{CMD_ACK}\n".encode())
+            self.active_clients[destination_id][0].sendall(Packet(CMD_MSG, client_id, sender_name, message).encode())
+            client_socket.sendall(Packet(CMD_ACK, CMD_ACK).encode())
         else:
             if self.database.is_existing_client(destination_id):
-                client_socket.sendall(f"{CMD_ACK}|{CMD_SAVE}\n".encode())
+                client_socket.sendall(Packet(CMD_ACK, CMD_SAVE).encode())
                 sender_name = self.active_clients[client_id][2]
                 self.database.offline_message_save(destination_id, client_id, sender_name, message)
             else:
-                client_socket.sendall(f"{CMD_ACK}|{CMD_NACK}\n".encode())
+                client_socket.sendall(Packet(CMD_ACK, CMD_NACK).encode())
 
     def handle_client(self, client_socket, client_address):
         client_id = None
@@ -163,7 +173,7 @@ class ChatServer:
                     command = parts[0]
                     if command == CMD_CLIENTS:
                         if len(parts) < 2:
-                            client_socket.sendall(f"{CMD_ACK}|{CMD_NACK}\n".encode())
+                            client_socket.sendall(Packet(CMD_ACK, CMD_NACK).encode())
                             continue
                         self.do_clients(client_socket, parts)
                         continue
@@ -180,7 +190,7 @@ class ChatServer:
                         self.do_message(client_socket, client_id, parts)
                         continue
 
-                    client_socket.sendall(f"{CMD_ACK}|{CMD_NACK}\n".encode())
+                    client_socket.sendall(Packet(CMD_ACK, CMD_NACK).encode())
         except (ConnectionResetError, ssl.SSLError) as e:
             print(f"Connection error for client {client_id}: {e}")
         except Exception as e:

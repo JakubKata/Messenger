@@ -3,7 +3,6 @@ import sqlite3
 
 from protocol import CMD_MSG
 
-
 class Database:
     def __init__(self, db_path="clients.db"):
         self.db_path = db_path

@@ -1,7 +1,6 @@
 import os
 import socket
 import ssl
-
 import rsa
 from dotenv import load_dotenv
 from PySide6.QtCore import QThread, Signal
@@ -9,7 +8,6 @@ from PySide6.QtCore import QThread, Signal
 from crypto_manager import CryptoManager
 from protocol import Packet
 from protocol import CMD_MSG, CMD_CLIENTS, CMD_ACK, CMD_NACK, CMD_SAVE, CMD_NEW, CMD_EXISTING, CMD_BUSY, CMD_ACTIVE, CMD_ALL, CMD_PUBKEY, CMD_GETKEY, CMD_KEY
-
 
 class NetworkClient(QThread):
     signal_login_ok = Signal(str)
@@ -112,8 +110,7 @@ class NetworkClient(QThread):
             return False
 
         if authentication_response == CMD_ACK:
-            self.socket.sendall(f"{CMD_EXISTING}\n".encode())
-            self.socket.sendall(f"{client_id}|{password}\n".encode())
+            self.socket.sendall(Packet(CMD_EXISTING, client_id, password).encode())
             response = self._recv_line()
 
             if response is None:
@@ -126,7 +123,7 @@ class NetworkClient(QThread):
                 self.private_key = self.crypto_manager.private_key
                 self.public_key = self.crypto_manager.public_key
                 public_key_str = self.public_key.save_pkcs1().decode().replace("\n", "~")
-                self.socket.sendall(f"{CMD_PUBKEY}|{public_key_str}\n".encode())
+                self.socket.sendall(Packet(CMD_PUBKEY, public_key_str).encode())
 
                 self.signal_login_ok.emit(client_id)
                 if not self.isRunning():
@@ -153,8 +150,7 @@ class NetworkClient(QThread):
             return False
 
         if authentication_response == CMD_ACK:
-            self.socket.sendall(f"{CMD_NEW}\n".encode())
-            self.socket.sendall(f"{client_id}\n".encode())
+            self.socket.sendall(Packet(CMD_NEW, client_id).encode())
             response = self._recv_line()
 
             if response is None:
@@ -166,7 +162,7 @@ class NetworkClient(QThread):
                 return False
 
             if response == CMD_ACK:
-                self.socket.sendall(f"{name}|{password}\n".encode())
+                self.socket.sendall(Packet(CMD_NEW, name, password).encode())
                 register_response = self._recv_line()
                 if register_response == CMD_ACK:
                     self.client_id = client_id
@@ -174,7 +170,7 @@ class NetworkClient(QThread):
                     self.private_key = self.crypto_manager.private_key
                     self.public_key = self.crypto_manager.public_key
                     public_key_str = self.public_key.save_pkcs1().decode().replace("\n", "~")
-                    self.socket.sendall(f"{CMD_PUBKEY}|{public_key_str}\n".encode())
+                    self.socket.sendall(Packet(CMD_PUBKEY, public_key_str).encode())
 
                     self.signal_login_ok.emit(client_id)
                     if not self.isRunning():
