@@ -119,7 +119,7 @@ Project_messenger/
 │   ├── generate_cert.py
 │   ├── protocol.py
 │   └── server.py
-└── .env (not committed)
+└── .env
 ```
 
 ---
