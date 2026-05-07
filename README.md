@@ -1,34 +1,34 @@
 # Project Messenger
 
-Project Messenger is a simple, secure client–server messenger written in Python. It uses TLS (SSL) for transport security and RSA for end-to-end message encryption between clients. The repository contains a server and a client application with a lightweight GUI.
+Project Messenger is a small, secure client–server messenger written in Python. It uses TLS for transport security and RSA for end-to-end message encryption between clients. The repository contains a server and a client application with a lightweight GUI.
 
-Examples of supported scenarios:
+Supported scenarios:
 
 - User registration and login
 - Active / full clients lists
 - Sending encrypted messages between clients
 - Offline message storage and delivery when the recipient reconnects
-- Server verification using a shared secret key (`SECRET_KEY`)
+- Server verification using a shared secret key (configured via `SECRET_KEY`)
 
 ---
 
 ## Features
 
 - TLS-encrypted TCP connections (via Python `ssl`)
-- Asymmetric message encryption with RSA
-- Support for new-client registration and existing-client login
-- Offline message storage (SQLite)
+- Asymmetric message encryption with `rsa`
+- New-client registration and existing-client login flows
+- Offline message storage using SQLite
 - Simple client GUI using `PySide6`
-- Public-key exchange and storage in server database
+- Public-key exchange and storage in the server database
 
 ---
 
 ## Requirements
 
 - Python 3.8 or newer
-- Virtual environment (recommended)
-- Optional dependencies: `PySide6`, `rsa`, `python-dotenv`
-- OpenSSL (to generate server certificates)
+- A virtual environment (recommended)
+- Required Python packages: `PySide6`, `rsa`, `python-dotenv` (see `requirements.txt`)
+- OpenSSL (optional — used by `generate_cert.py` to create self-signed certificates)
 
 The project is licensed under the MIT License (see `LICENSE`).
 
@@ -46,25 +46,31 @@ source .venv/bin/activate
 .\.venv\Scripts\Activate.ps1
 ```
 
-2. Install dependencies (if a `requirements.txt` is present):
+2. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. If needed, install the GUI and crypto packages:
+3. Generate a server TLS certificate (either with OpenSSL or the helper script):
 
 ```bash
-pip install PySide6 rsa python-dotenv
-```
-
-4. Generate a self-signed TLS certificate for the server (example):
-
-```bash
+# using OpenSSL
 openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
+
+# or run the helper (requires OpenSSL on PATH)
+python server/generate_cert.py
 ```
 
-5. Configure environment variables in a `.env` file: `SERVER_IP`, `SERVER_PORT`, `SECRET_KEY`.
+4. Create a `.env` file in the repository root with the following example values:
+
+```text
+SERVER_IP=127.0.0.1
+SERVER_PORT=12345
+SECRET_KEY=changeme
+```
+
+5. (Optional) Edit `server/config.json` to adjust `MAX_CLIENTS` or other server settings.
 
 ---
 
@@ -82,15 +88,13 @@ Start the client GUI:
 python client/app.py
 ```
 
-There are additional client utilities in the `client/` folder for testing and development.
-
 ---
 
-## Usage (brief)
+## Notes
 
-1. Run the server on the host defined in `.env`.
-2. Start the client, register or log in.
-3. Select a recipient and send a message — the server will forward the encrypted payload or store it for offline delivery.
+- The server uses `server.crt` / `server.key` (generated above). The client expects `server.crt` to validate the server certificate.
+- A `requirements.txt` file is included with the main dependencies. Pin package versions there if you need reproducible installs.
+- The server reads `server/config.json` at startup; keep it when packaging or deploying.
 
 ---
 
@@ -100,18 +104,22 @@ There are additional client utilities in the `client/` folder for testing and de
 Project_messenger/
 ├── LICENSE
 ├── README.md
+├── requirements.txt
 ├── client/
 │   ├── app.py
-│   ├── client.py
+│   ├── chat_store.py
+│   ├── crypto_manager.py
+│   ├── network.py
 │   ├── protocol.py
 │   ├── ui_chat.py
 │   └── chat_gui.ui
 ├── server/
-│   ├── server.py
-│   ├── protocol.py
+│   ├── config.json
 │   ├── database.py
-│   └── generate_cert.py
-└── .env
+│   ├── generate_cert.py
+│   ├── protocol.py
+│   └── server.py
+└── .env (not committed)
 ```
 
 ---
