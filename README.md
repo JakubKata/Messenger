@@ -62,7 +62,14 @@ openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 
 python server/generate_cert.py
 ```
 
-4. Create a `.env` file in the repository root with the following example values:
+4. Copy the example environment files to local `.env` files:
+
+```powershell
+Copy-Item client\env.example client\.env
+Copy-Item server\env.example server\.env
+```
+
+Example values:
 
 ```text
 SERVER_IP=127.0.0.1
@@ -94,6 +101,7 @@ python client/app.py
 
 - The server uses `server.crt` / `server.key` (generated above). The client expects `server.crt` to validate the server certificate.
 - A `requirements.txt` file is included with the main dependencies. Pin package versions there if you need reproducible installs.
+- Local `.env` files are ignored by git; keep the committed `env.example` files as the template.
 - The server reads `server/config.json` at startup; keep it when packaging or deploying.
 
 ---
@@ -112,14 +120,16 @@ Project_messenger/
 │   ├── network.py
 │   ├── protocol.py
 │   ├── ui_chat.py
-│   └── chat_gui.ui
+│   ├── chat_gui.ui
+│   └── env.example
 ├── server/
 │   ├── config.json
 │   ├── database.py
 │   ├── generate_cert.py
 │   ├── protocol.py
-│   └── server.py
-└── .env
+│   ├── server.py
+│   └── env.example
+└── .gitignore
 ```
 
 ---
