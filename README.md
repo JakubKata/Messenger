@@ -89,6 +89,19 @@ Start the server:
 python server/server.py
 ```
 
+Run the server with Docker:
+
+```bash
+docker build -t project-messenger-server -f server/Dockerfile .
+docker run --rm -p 2345:2345 --env-file server/.env -v ${PWD}/server:/app/server project-messenger-server
+```
+
+If you run the container for the first time, make sure `server/.env` exists locally. A simple way to create it is:
+
+```powershell
+Copy-Item server\env.example server\.env
+```
+
 Start the client GUI:
 
 ```bash
@@ -103,6 +116,7 @@ python client/app.py
 - A `requirements.txt` file is included with the main dependencies. Pin package versions there if you need reproducible installs.
 - Local `.env` files are ignored by git; keep the committed `env.example` files as the template.
 - The server reads `server/config.json` at startup; keep it when packaging or deploying.
+- The Docker image generates `server.crt` and `server.key` on startup if they do not already exist in the mounted `server/` directory.
 
 ---
 
@@ -113,6 +127,7 @@ Project_messenger/
 ├── LICENSE
 ├── README.md
 ├── requirements.txt
+├── .dockerignore
 ├── client/
 │   ├── app.py
 │   ├── chat_store.py
